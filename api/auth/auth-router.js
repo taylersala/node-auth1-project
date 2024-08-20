@@ -1,6 +1,13 @@
 // Require `checkUsernameFree`, `checkUsernameExists` and `checkPasswordLength`
 // middleware functions from `auth-middleware.js`. You will need them here!
 const router = require('express').Router()
+const User = require('../users/users-model')
+const bcrypt = require('bcryptjs')
+const {
+  checkPasswordLength,
+  checkUsernameExists,
+  checkUsernameFree,
+} = require('./auth-middleware')
 
 /**
   1 [POST] /api/auth/register { "username": "sue", "password": "1234" }
@@ -24,9 +31,16 @@ const router = require('express').Router()
     "message": "Password must be longer than 3 chars"
   }
  */
-  router.post('/login', (req, res, next) => {
-    res.json('login')
+  router.post('/register', checkPasswordLength, checkUsernameFree, (req, res, next) => {
+    const { username, password } = req.body
+    const hash = bcrypt.hashSync(password, 8)
+    User.add({ username, password: hash})
+      .then(saved => {
+        res.status(201).json(saved)
+      })
+      .catch(next)
   })
+  
 
 
 /**
@@ -45,9 +59,16 @@ const router = require('express').Router()
   }
  */
 
-router.post('/register', (req, res, next) => {
-  res.json('register')
-})
+  router.post('/login', checkUsernameExists, (req, res, next) => {
+    const { password } = req.body
+    if (bcrypt.compareSync(password, req.user.password)) {
+      // make so cookie is set on the client and server stores a session w a sess id to that particular user
+      req.session.user = req.user
+      res.json({message: `Welcome ${req.user.username}!`})
+    }else{
+        next({status: 401, message: "Invalid credentials"})
+      }
+  })
 
 /**
   3 [GET] /api/auth/logout
@@ -66,7 +87,17 @@ router.post('/register', (req, res, next) => {
  */
 
   router.get('/logout', (req, res, next) => {
-    res.json('logout')
+    if (req.session.user) {
+      res.session.destroy(err => {
+        if (err) {
+          next(err)
+        }else{
+          res.json({message: 'logged out'})
+        }
+      })
+    }else {
+      res.json({message: "no session"})
+    }
   })
 
  module.exports = router
